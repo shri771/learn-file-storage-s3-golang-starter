@@ -1,0 +1,29 @@
+name: ci
+
+on:
+    pull_request:
+        branches:
+            - main
+            - addtets
+    push:
+        branches: [main]
+
+jobs:
+    # Cache dependencies with the specific key
+    - name: Cache dependencies
+      id: cache-dependencies
+      uses: actions/cache@v4
+      with:
+          path: |
+              node_modules
+              ~/.npm
+          key: cache-b69fdd6-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+              cache-b69fdd6-${{ runner.os }}-
+              cache-b69fdd6-
+
+    - name: prime-cache-b69fdd6
+      run: |
+          if [ "${{ steps.cache-dependencies.outputs.cache-hit }}" == "true" ]; then
+          echo "Cache key: cache-b69fdd6-${{ runner.os }}"
+          fi
