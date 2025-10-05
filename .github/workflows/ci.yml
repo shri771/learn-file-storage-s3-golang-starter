@@ -36,23 +36,6 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Check out code
-              uses: actions/checkout@v4
-
-            - name: Set up Go
-              uses: actions/setup-go@v5
-              with:
-                  go-version: "1.25.1"
-
-            - name: Check formatting
-              run: test -z $(go fmt ./...)
-
-            - name: Install staticcheck
-              run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
-            - name: Run staticcheck
-              run: staticcheck ./...
-
             # Cache dependencies with the specific key
             - name: Cache dependencies
               id: cache-dependencies
@@ -71,3 +54,20 @@ jobs:
                   if [ "${{ steps.cache-dependencies.outputs.cache-hit }}" == "true" ]; then
                   echo "Cache key: cache-b69fdd6-${{ runner.os }}"
                   fi
+
+            - name: Check out code
+              uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: "1.25.1"
+
+            - name: Check formatting
+              run: test -z $(go fmt ./...)
+
+            - name: Install staticcheck
+              run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+            - name: Run staticcheck
+              run: staticcheck ./...
