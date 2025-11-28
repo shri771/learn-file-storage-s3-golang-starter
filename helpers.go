@@ -7,9 +7,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func (cfg *apiConfig) GetFilePath(id uuid.UUID, fileType string) string {
+func (cfg *apiConfig) GetFilePath(id uuid.UUID, ext string) string {
 
-	fileName := fmt.Sprintf("%v.%v", id, fileType)
+	fileName := fmt.Sprintf("%v%v", id, ext)
 
 	filePath := filepath.Join(cfg.assetsRoot, fileName)
 

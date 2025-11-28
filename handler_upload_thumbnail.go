@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -30,7 +33,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	const maxMemory = 10 << 20 // 10 MB
-	r.ParseMultipartForm(maxMemory)
+	if err := r.ParseMultipartForm(maxMemory); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse multipart form", err)
+		return
+	}
 
 	file, header, err := r.FormFile("thumbnail")
 	if err != nil {
@@ -39,16 +45,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
+	// Try to get content type from header first; if empty or ambiguous, sniff it from file bytes.
 	mediaType := header.Header.Get("Content-Type")
 	if mediaType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+		respondWithError(w, http.StatusInternalServerError, "Uploaded file is not seekable", nil)
 		return
 	}
 
-	// data, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error reading file", err)
-		return
+	exts, _ := mime.ExtensionsByType(mediaType)
+	ext := ""
+	if len(exts) > 0 {
+		ext = exts[0] // e.g. ".png"
+	} else {
+		// fallback extension if unknown
+		ext = ".bin"
 	}
 
 	video, err := cfg.db.GetVideo(videoID)
@@ -61,18 +71,39 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Save the file to local storage
-	filePath := cfg.GetFilePath(video.UserID, mediaType)
-
-	NewFile, err := os.Create(filePath)
-	io.Copy(NewFile, file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not copy thumbnail to cretated file", err)
+	// Check for correct file format
+	if ext == ".pdf" {
+		respondWithError(w, http.StatusBadRequest, ".pdf not supported in thumbnails", err)
 		return
 	}
 
-	err = cfg.db.UpdateVideo(video)
+	// Build the path and ensure directory exists
+	filePath := cfg.GetFilePath(video.UserID, ext) // ensure this returns a full path
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create directories for thumbnail", err)
+		return
+	}
+
+	dst, err := os.Create(filePath)
 	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create thumbnail file", err)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not save thumbnail", err)
+		return
+	}
+
+	// Build URL (use filepath.Base so assets mapping is simple). Prefer to compute public path separately.
+	filename := filepath.Base(filePath)
+	publicPath := filepath.ToSlash(filepath.Join("assets", filename)) // path for URL
+	thumbnailURL := fmt.Sprintf("http://localhost:%v/%s", cfg.port, publicPath)
+	video.ThumbnailURL = &thumbnailURL
+
+	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
 		return
 	}
